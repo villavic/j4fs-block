@@ -69,10 +69,10 @@
 /**********************************************************
  * This is porting values
  **********************************************************/
-//#define PHYSICAL_PAGE_SIZE		4096		// 4KB
-//#define PHYSICAL_BLOCK_SIZE	PHYSICAL_PAGE_SIZE*64	// 256KB
-#define PHYSICAL_PAGE_SIZE		2048		// 2KB
-#define PHYSICAL_BLOCK_SIZE	PHYSICAL_PAGE_SIZE*64	// 128KB
+#define PHYSICAL_PAGE_SIZE		4096		// 4KB
+#define PHYSICAL_BLOCK_SIZE	PHYSICAL_PAGE_SIZE*64	// 256KB
+//#define PHYSICAL_PAGE_SIZE		2048		// 2KB
+//#define PHYSICAL_BLOCK_SIZE	PHYSICAL_PAGE_SIZE*64	// 128KB
 #define J4FS_PARTITION_ID		21
 #undef J4FS_USE_XSR					// NO XSR
 // J4FS for moviNAND merged from ROSSI
