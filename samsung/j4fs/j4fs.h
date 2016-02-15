@@ -297,7 +297,11 @@ struct j4fs_inode_info {
   * index   : file offset to read or write
  */
 typedef struct {
+#ifdef J4FS_USE_BLK
+	struct super_block *device;
+#else
 	DWORD device;
+#endif
 	DWORD status;
 	BYTE *buffer;
 	DWORD count;
@@ -490,7 +494,7 @@ extern int FlashDevWrite(j4fs_device_info *dev_ptr, DWORD offset, DWORD length, 
 extern int FlashDevErase(j4fs_device_info *dev_ptr);
 // J4FS for Block Devices fron NiTRo
 #if defined(J4FS_USE_BLK)
-extern int FlashDevMount(const char *dev_name);
+extern int FlashDevMount(struct super_block *sb);
 #else
 extern int FlashDevMount(void);
 #endif

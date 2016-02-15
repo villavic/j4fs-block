@@ -43,7 +43,6 @@ static struct file *j4fs_filp;
 
 // J4FS for Block Devices fron NiTRo
 #elif defined(J4FS_USE_BLK)
-static struct file *j4fs_filp;
 unsigned int jfs4_single_mount=0;
 // J4FS for Block Devices fron NiTRo
 #else
@@ -70,15 +69,19 @@ int FlashDevRead(j4fs_device_info *dev_ptr, DWORD offset, DWORD length, BYTE *bu
 #ifndef J4FS_USE_BLK
     	DWORD nVol=0;
 	int part_id=dev_ptr->device;
-#endif
 // J4FS for moviNAND merged from ROSSI
 	int ret=-1;
+#endif
 
 // J4FS for Block Devices fron NiTRo
 // J4FS for moviNAND merged from ROSSI
-#if defined(J4FS_USE_BLK) || defined(J4FS_USE_MOVI)
+#if defined(J4FS_USE_MOVI)
 // J4FS for Block Devices fron NiTRo
 	mm_segment_t oldfs;
+#elif defined(J4FS_USE_BLK)
+	struct buffer_head *bh;
+	unsigned long boffset;
+	struct super_block *sb = dev_ptr->device;
 #endif
 // J4FS for moviNAND merged from ROSSI
 
@@ -96,23 +99,32 @@ int FlashDevRead(j4fs_device_info *dev_ptr, DWORD offset, DWORD length, BYTE *bu
 	}
 // J4FS for moviNAND merged from ROSSI
 // J4FS for Block Devices fron NiTRo
-#elif defined(J4FS_USE_MOVI) || defined(J4FS_USE_BLK)
+#elif defined(J4FS_USE_MOVI)
 // J4FS for Block Devices fron NiTRo
 	if (!j4fs_filp) {
-			printk("J4FS not available\n");
-			return J4FS_FAIL;
-		}
-		j4fs_filp->f_flags |= O_NONBLOCK;
-		oldfs = get_fs(); set_fs(get_ds());
-		ret = j4fs_filp->f_op->llseek(j4fs_filp, offset, SEEK_SET);
-		ret = j4fs_filp->f_op->read(j4fs_filp, buffer, length, &j4fs_filp->f_pos);
-		set_fs(oldfs);
-		j4fs_filp->f_flags &= ~O_NONBLOCK;
-		if (ret < 0) {
-			printk("j4fs_filp->read() failed: %d\n", ret);
-			return J4FS_FAIL;
-		}
+		printk("J4FS not available\n");
+		return J4FS_FAIL;
+	}
+	j4fs_filp->f_flags |= O_NONBLOCK;
+	oldfs = get_fs(); set_fs(get_ds());
+	ret = j4fs_filp->f_op->llseek(j4fs_filp, offset, SEEK_SET);
+	ret = j4fs_filp->f_op->read(j4fs_filp, buffer, length, &j4fs_filp->f_pos);
+	set_fs(oldfs);
+	j4fs_filp->f_flags &= ~O_NONBLOCK;
+	if (ret < 0) {
+		printk("j4fs_filp->read() failed: %d\n", ret);
+		return J4FS_FAIL;
+	}
 // J4FS for moviNAND merged from ROSSI
+#elif defined(J4FS_USE_BLK)
+	boffset = offset / sb->s_blocksize;
+	bh = sb_bread(dev_ptr->device, boffset);
+	if (!bh) {
+		T(J4FS_TRACE_ALWAYS,("%s %d: cannot read block=%lu, length=%lu, bh=%p\n",__FUNCTION__,__LINE__,boffset,(unsigned long)length,bh));
+		return J4FS_FAIL;
+	}
+	memcpy(buffer, bh->b_data, length);
+	brelse(bh);
 #else
 #error
 #endif
@@ -136,14 +148,18 @@ int FlashDevWrite(j4fs_device_info *dev_ptr, DWORD offset, DWORD length, BYTE *b
 #ifndef J4FS_USE_BLK
         DWORD nVol=0;
         int part_id=dev_ptr->device;
-#endif
 // J4FS for moviNAND merged from ROSSI
 	int ret=-1;
+#endif
 
 // J4FS for Block Devices fron NiTRo
-#if defined(J4FS_USE_MOVI) || defined(J4FS_USE_BLK)
+#if defined(J4FS_USE_MOVI)
 // J4FS for Block Devices fron NiTRo
 	mm_segment_t oldfs;
+#elif defined(J4FS_USE_BLK)
+	struct buffer_head *bh;
+	unsigned long boffset;
+	struct super_block *sb = dev_ptr->device;
 #endif
 // J4FS for moviNAND merged from ROSSI
 
@@ -160,11 +176,11 @@ int FlashDevWrite(j4fs_device_info *dev_ptr, DWORD offset, DWORD length, BYTE *b
    		return J4FS_FAIL;
 	}
 // J4FS for Block Devices fron NiTRo
-#elif defined(J4FS_USE_MOVI) || defined(J4FS_USE_BLK)
+#elif defined(J4FS_USE_MOVI)
 // J4FS for Block Devices fron NiTRo
 	if (!j4fs_filp) {
-			printk("J4FS not available\n");
-			return J4FS_FAIL;
+		printk("J4FS not available\n");
+		return J4FS_FAIL;
 	}
 	j4fs_filp->f_flags |= O_NONBLOCK;
 	oldfs = get_fs(); set_fs(get_ds());
@@ -177,6 +193,28 @@ int FlashDevWrite(j4fs_device_info *dev_ptr, DWORD offset, DWORD length, BYTE *b
 		return J4FS_FAIL;
 	}
 // J4FS for moviNAND merged from ROSSI
+#elif defined(J4FS_USE_BLK)
+	boffset = offset / sb->s_blocksize;
+	bh = sb_getblk(dev_ptr->device, boffset);
+	if (!bh) {
+		T(J4FS_TRACE_ALWAYS,("%s %d: cannot get block=%lu, length=%lu, bh=%p\n",__FUNCTION__,__LINE__,boffset,(unsigned long)length,bh));
+		return J4FS_FAIL;
+	}
+	lock_buffer(bh);
+	bh->b_end_io = end_buffer_write_sync;
+	get_bh(bh);
+	memcpy(bh->b_data, buffer, length);
+	if (!buffer_uptodate(bh))
+	        set_buffer_uptodate(bh);
+	if (buffer_dirty(bh))
+	        clear_buffer_dirty(bh);
+	submit_bh(WRITE_SYNC | WRITE_FLUSH_FUA, bh);
+	wait_on_buffer(bh);
+	if (unlikely(!buffer_uptodate(bh))) {
+		T(J4FS_TRACE_ALWAYS,("%s %d: cannot write block %lu\n",__FUNCTION__,__LINE__,boffset));
+		return J4FS_FAIL;
+	}
+	brelse(bh);
 #else
 #error
 #endif
@@ -231,7 +269,7 @@ int FlashDevSpecial(j4fs_device_info *dev_ptr, DWORD scmd)
 
 // J4FS for Block Devices fron NiTRo
 #if defined(J4FS_USE_BLK)
-int FlashDevMount(const char *dev_name)
+int FlashDevMount(struct super_block *sb)
 #else
 // J4FS for Block Devices fron NiTRo
 int FlashDevMount()
@@ -249,15 +287,10 @@ int FlashDevMount()
 		return J4FS_FAIL;
 	}
 #endif
-#if defined(J4FS_USE_BLK) || defined(J4FS_USE_MOVI)
+#if defined(J4FS_USE_MOVI)
 // J4FS for Block Devices fron NiTRo
 // J4FS for moviNAND merged from ROSSI
-#ifdef J4FS_USE_MOVI
 	j4fs_filp = filp_open(J4FS_DEVNAME, O_RDWR|O_SYNC, 0);
-// J4FS for Block Devices fron NiTRo
-#elif defined(J4FS_USE_BLK) 
-	j4fs_filp = filp_open(dev_name, O_RDWR|O_SYNC, 0);
-#endif
 // J4FS for Block Devices fron NiTRo
 	if (IS_ERR(j4fs_filp)) {
 		printk("FlashDevMount : filp_open() failed~!: %ld\n", PTR_ERR(j4fs_filp));
@@ -266,8 +299,11 @@ int FlashDevMount()
 	printk("FlashDevMount : filp_open() OK....!\n");
 #endif
 // J4FS for moviNAND merged from ROSSI
-
+#if defined(J4FS_USE_BLK) 
+	device_info.device = sb
+#else
 	device_info.device=J4FS_PARTITION_ID;
+#endif
 	device_info.blocksize=PHYSICAL_BLOCK_SIZE;
 	device_info.pagesize=PHYSICAL_PAGE_SIZE;
 	device_info.j4fs_offset=media_status_table_size*device_info.blocksize;	 // j4fs_offset follows the Media Status Table.
@@ -283,7 +319,7 @@ int FlashDevUnmount()
 {
 // ROSSI Projecct(hyunkwon.kim) 2010.09.06 Add J4FS for Parameter Infomation
 // J4FS for Block Devices fron NiTRo
-#if defined(J4FS_USE_BLK) || defined(J4FS_USE_MOVI)
+#if defined(J4FS_USE_MOVI)
 // J4FS for Block Devices fron NiTRo
 	filp_close(j4fs_filp, NULL);
 	printk("FlashDevUnmount : filp_close() OK....!\n");
