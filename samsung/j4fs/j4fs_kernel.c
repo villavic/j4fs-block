@@ -422,7 +422,7 @@ int j4fs_file_write(struct file *f, const char *buf, size_t n, loff_t *pos)
 
 	j4fs_GrossLock();
 
-	inode = f->f_dentry->d_inode;
+	inode = f->f_path.dentry->d_inode;
 
 	if (!S_ISBLK(inode->i_mode) && f->f_flags & O_APPEND)
 		ipos = inode->i_size;
@@ -623,7 +623,7 @@ bad_inode:
 ino_t j4fs_inode_by_name(struct inode * dir, struct dentry *dentry)
 {
 	unsigned int cur_link;
-	struct j4fs_inode_info *ei = J4FS_I(dir);
+	struct j4fs_inode_info *ei = kmalloc(sizeof(struct j4fs_inode_info), GFP_NOFS);
 	struct j4fs_inode *raw_inode;
 	ino_t ino;
 	int nErr;
@@ -633,6 +633,15 @@ ino_t j4fs_inode_by_name(struct inode * dir, struct dentry *dentry)
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return 0;
 	}
+	/*
+	 * The J4FS_I() macro, wrapper around container_of(), doesn't seem to do
+	 * what it was doing in previous kernel versions.
+	 * j4fs_read_inode struct always ended empty (except for vfs_inode ofc).
+	 * Calling j4fs_read_inode() where J4FS_I() 'works' seems to solve
+	 * the problem.
+	 */
+	memcpy(&ei->vfs_inode, dir, sizeof(struct inode));
+	j4fs_read_inode(&ei->vfs_inode);
 
 	T(J4FS_TRACE_FS,("%s %d\n",__FUNCTION__,__LINE__));
 
@@ -682,21 +691,28 @@ ino_t j4fs_inode_by_name(struct inode * dir, struct dentry *dentry)
 
 error1:
 	kfree(buf);
+	kfree(ei);
 
 	return 0;
 
 }
 
-int j4fs_readdir (struct file * filp, void * dirent, filldir_t filldir)
+int j4fs_readdir (struct file * filp, struct dir_context *ctx)
 {
 	unsigned int curoffs, offset, cur_link;
-	struct inode *inode = filp->f_dentry->d_inode;
-	struct j4fs_inode_info *ei = J4FS_I(inode);
+	struct inode *inode = file_inode(filp); /* Seems that -both- work */
+	//struct inode *inode = filp->f_path.dentry->d_inode;
+	struct j4fs_inode_info *ei = kmalloc(sizeof(struct j4fs_inode_info), GFP_NOFS);
+
 	struct j4fs_inode *raw_inode;
 	int i,j, nErr;
 	BYTE *buf;
 	DWORD valid_offset[128][2];
 	int count=0;
+
+	/* J4FS_I() workaround as explained in j4fs_inode_by_name() */
+	memcpy(&ei->vfs_inode, inode, sizeof(struct inode));
+	j4fs_read_inode(&ei->vfs_inode);
 
 	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
@@ -712,23 +728,25 @@ int j4fs_readdir (struct file * filp, void * dirent, filldir_t filldir)
 	offset = filp->f_pos;
 
 	if (offset == 0) {
-		nErr=filldir(dirent, ".", 1, offset, filp->f_dentry->d_inode->i_ino, DT_DIR);
+		nErr=ctx->actor(ctx, ".", 1, offset, filp->f_path.dentry->d_inode->i_ino, DT_DIR);
 		if (nErr != 0) {
 			T(J4FS_TRACE_ALWAYS,("%s %d: error(nErr=0x%x)\n",__FUNCTION__,__LINE__,nErr));
 	   		goto error1;
 		}
 		offset++;
 		filp->f_pos++;
+		ctx->pos++;
 	}
 
 	if (offset == 1) {
-		nErr=filldir(dirent, "..", 2, offset,filp->f_dentry->d_parent->d_inode->i_ino, DT_DIR);
+		nErr=ctx->actor(ctx, "..", 2, offset, parent_ino(filp->f_path.dentry), DT_DIR);
 		if (nErr != 0) {
 			T(J4FS_TRACE_ALWAYS,("%s %d: error(nErr=0x%x)\n",__FUNCTION__,__LINE__,nErr));
 	   		goto error1;
 		}
 		offset++;
 		filp->f_pos++;
+		ctx->pos++;
 	}
 
 	curoffs = 1;
@@ -795,7 +813,7 @@ int j4fs_readdir (struct file * filp, void * dirent, filldir_t filldir)
 
 				raw_inode = (struct j4fs_inode *) buf;
 
-				nErr=filldir(dirent, raw_inode->i_filename, strlen(raw_inode->i_filename), offset, raw_inode->i_id, DT_REG);
+				nErr=ctx->actor(ctx, raw_inode->i_filename, strlen(raw_inode->i_filename), offset, raw_inode->i_id, DT_REG);
 
 				if(nErr <0) {
 					T(J4FS_TRACE_ALWAYS,("%s %d: error(nErr=0x%08x,filename=%s, file length=%d)\n",__FUNCTION__,__LINE__,nErr,raw_inode->i_filename,(unsigned int) strlen(raw_inode->i_filename)));
@@ -806,6 +824,7 @@ int j4fs_readdir (struct file * filp, void * dirent, filldir_t filldir)
 					T(J4FS_TRACE_FS,("%s %d: success(filename=%s, file length=%d)\n",__FUNCTION__,__LINE__,raw_inode->i_filename,(unsigned int) strlen(raw_inode->i_filename)));
 					offset++;
 					filp->f_pos++;
+					ctx->pos++;
 				}
 			}
 		}
@@ -813,6 +832,7 @@ int j4fs_readdir (struct file * filp, void * dirent, filldir_t filldir)
 
 error1:
 	kfree(buf);
+	kfree(ei);
 	j4fs_GrossUnlock();
 	return 0;
 }
@@ -846,7 +866,7 @@ struct inode *j4fs_iget(struct super_block *sb, unsigned long ino)
 }
 #endif
 
-struct dentry *j4fs_lookup(struct inode * dir, struct dentry *dentry, struct nameidata *nd)
+struct dentry *j4fs_lookup(struct inode * dir, struct dentry *dentry, unsigned int flags)
 {
 	struct inode * inode;
 	ino_t ino;
@@ -870,7 +890,7 @@ struct dentry *j4fs_lookup(struct inode * dir, struct dentry *dentry, struct nam
 	return d_splice_alias(inode, dentry);
 }
 
-struct inode *j4fs_new_inode(struct inode *dir, struct dentry *dentry, int mode)
+struct inode *j4fs_new_inode(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
 	struct super_block *sb;
 	struct inode * inode;
@@ -1132,7 +1152,7 @@ int j4fs_add_nondir(struct dentry *dentry, struct inode *inode)
  * If the create succeeds, we fill in the inode information
  * with d_instantiate().
  */
-int j4fs_create (struct inode * dir, struct dentry * dentry, int mode, struct nameidata *nd)
+int j4fs_create (struct inode * dir, struct dentry * dentry, umode_t mode, bool excl)
 {
 	struct inode * inode;
 	int err=-1;
@@ -1267,7 +1287,7 @@ int j4fs_fill_super(struct super_block *sb, void *data, int silent)
 	root = iget(sb, J4FS_ROOT_INO);
 #endif
 
-	sb->s_root = d_alloc_root(root);
+	sb->s_root = d_make_root(root);
 
 	// Set device_info.j4fs_end using STLInfo.nTotalLogScts
 #if defined(J4FS_USE_XSR)
@@ -1295,6 +1315,11 @@ int j4fs_fill_super(struct super_block *sb, void *data, int silent)
 	device_info.j4fs_end=device_info.j4fs_device_end-PHYSICAL_BLOCK_SIZE;
 #endif
 // J4FS for moviNAND merged from ROSSI
+#if defined(J4FS_USE_BLK)
+	if (FlashDevMount(sb)) {
+	         return -EBUSY;
+	}
+#endif
 
 	T(J4FS_TRACE_FS,("%s %d: device_info.j4fs_end=0x%08x, device_info.j4fs_device_end=0x%08x\n",__FUNCTION__,__LINE__,device_info.j4fs_end,device_info.j4fs_device_end));
 
@@ -1338,14 +1363,6 @@ static struct dentry *j4fs_mount(struct file_system_type *fs_type, int flags, co
 
 	T(J4FS_TRACE_FS,("%s %d\n",__FUNCTION__,__LINE__));
 
-// J4FS for Block Devices fron NiTRo
-#if defined(J4FS_USE_BLK)
-	if(FlashDevMount(dev_name)){
-		 return ERR_PTR(-EBUSY);
-	}
-#endif
-// J4FS for Block Devices fron NiTRo
-
 	return mount_bdev(fs_type, flags, dev_name, data, j4fs_fill_super);
 }
 
@@ -1379,7 +1396,7 @@ void j4fs_destroy_inode(struct inode *inode)
 {
 	T(J4FS_TRACE_FS,("%s %d\n",__FUNCTION__,__LINE__));
 
-	kmem_cache_free(j4fs_inode_cachep, J4FS_I(inode));
+	if (inode) kmem_cache_free(j4fs_inode_cachep, J4FS_I(inode));
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 28)
@@ -1538,19 +1555,19 @@ const struct address_space_operations j4fs_aops = {
 };
 
 const struct file_operations j4fs_file_operations = {
-	.read		= do_sync_read,
-	.write		= do_sync_write,
-	.aio_read	= generic_file_aio_read,
-	.aio_write	= generic_file_aio_write,
 	.open		= generic_file_open,
 	.llseek		= generic_file_llseek,
 	.fsync		= j4fs_fsync,
+	.read_iter      = generic_file_read_iter,
+	.write_iter     = generic_file_write_iter,
+	.mmap           = generic_file_mmap,
+	.splice_read    = generic_file_splice_read,
 };
 
 const struct file_operations j4fs_dir_operations = {
 	.llseek		= generic_file_llseek,
 	.read		= generic_read_dir,
-	.readdir		= j4fs_readdir,
+	.iterate	= j4fs_readdir,
 };
 
 const struct inode_operations j4fs_file_inode_operations = {
