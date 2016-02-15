@@ -21,8 +21,6 @@
 #include <asm/util.h>
 #endif
 
-#define J4FS_TRACE_FSD_PRINT_META_DATA J4FS_TRACE_ALWAYS
-
 j4fs_device_info device_info;
 unsigned int j4fs_traceMask=0;
 unsigned int j4fs_PORMask=0;
