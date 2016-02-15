@@ -71,7 +71,7 @@ extern unsigned int j4fs_rw_start;
 extern int ro_j4fs_header_count;
 extern unsigned int j4fs_next_sequence;
 extern unsigned int j4fs_transaction_next_offset;
-extern int j4fs_panic;
+extern int j4fs_panicked;
 
 void j4fs_GrossLock(void)
 {
@@ -160,7 +160,7 @@ int j4fs_writepage(struct page *page, struct writeback_control *wbc)
 	j4fs_ctrl ctl;
 	int nErr;
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return -ENOSPC;
 	}
@@ -238,7 +238,7 @@ int j4fs_write_begin(struct file *filp, struct address_space *mapping,
 	int ret = 0;
 	int space_held = 0;
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return -ENOSPC;
 	}
@@ -299,7 +299,7 @@ out:
 int j4fs_prepare_write(struct file *f, struct page *pg,
 				unsigned offset, unsigned to)
 {
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return -ENOSPC;
 	}
@@ -327,7 +327,7 @@ int j4fs_write_end(struct file *filp, struct address_space *mapping,
 	void *addr, *kva;
 	uint32_t offset_into_page = pos & (PAGE_CACHE_SIZE - 1);
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return -ENOSPC;
 	}
@@ -375,7 +375,7 @@ int j4fs_commit_write(struct file *f, struct page *pg, unsigned offset, unsigned
 	unsigned spos = pos;
 	unsigned saddr;
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return -ENOSPC;
 	}
@@ -415,7 +415,7 @@ int j4fs_file_write(struct file *f, const char *buf, size_t n, loff_t *pos)
 	struct inode *inode;
 	j4fs_ctrl ctl;
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return -ENOSPC;
 	}
@@ -472,7 +472,7 @@ struct j4fs_inode *j4fs_get_inode(struct super_block *sb, ino_t ino)
 
 	buf=kmalloc(J4FS_BASIC_UNIT_SIZE,GFP_NOFS);
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		goto error1;
 	}
@@ -548,7 +548,7 @@ void j4fs_read_inode (struct inode * inode)
 	ino_t ino = inode->i_ino;
 	struct j4fs_inode * raw_inode;
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return;
 	}
@@ -629,7 +629,7 @@ ino_t j4fs_inode_by_name(struct inode * dir, struct dentry *dentry)
 	int nErr;
 	BYTE *buf;
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return 0;
 	}
@@ -698,7 +698,7 @@ int j4fs_readdir (struct file * filp, void * dirent, filldir_t filldir)
 	DWORD valid_offset[128][2];
 	int count=0;
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return 0;
 	}
@@ -885,7 +885,7 @@ struct inode *j4fs_new_inode(struct inode *dir, struct dentry *dentry, int mode)
 	j4fs_transaction *transaction;
 #endif
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return NULL;
 	}
@@ -1137,7 +1137,7 @@ int j4fs_create (struct inode * dir, struct dentry * dentry, int mode, struct na
 	struct inode * inode;
 	int err=-1;
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return err;
 	}
@@ -1168,7 +1168,7 @@ int j4fs_hold_space(int size)
 	int nErr;
 	BYTE *buf;
 
-	if(j4fs_panic==1) {
+	if(j4fs_panicked==1) {
 		T(J4FS_TRACE_ALWAYS,("%s %d: j4fs panic\n",__FUNCTION__,__LINE__));
 		return 0;
 	}

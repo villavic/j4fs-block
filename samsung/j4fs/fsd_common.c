@@ -28,7 +28,7 @@ unsigned int j4fs_PORCount=0;
 unsigned int j4fs_rw_start=0;
 j4fs_header ro_j4fs_header[J4FS_MAX_RO_FILES_NUMBER];
 int ro_j4fs_header_count=0;
-int j4fs_panic=0;
+int j4fs_panicked=0;
 
 #ifdef J4FS_TRANSACTION_LOGGING
 unsigned int j4fs_next_sequence=0;
@@ -1932,7 +1932,7 @@ int fsd_panic()
 	BYTE buf[J4FS_BASIC_UNIT_SIZE];
 #endif
 
-	j4fs_panic=1;
+	j4fs_panicked=1;
 
 	// Marking j4fs panic by writing J4FS_PANIC to mst->status
 	ret = FlashDevRead(&device_info, 0, J4FS_BASIC_UNIT_SIZE, buf);
