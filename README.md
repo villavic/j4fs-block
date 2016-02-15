@@ -24,7 +24,9 @@ That file will be too big to flash back into the STL partition, to check where t
     00500000
 
 
-The new size would be 0x140000 or 1310720 bytes in this example, then just dd it out to a flashable file: `dd if=param.lfs.big of=param.lfs.new bs=4096 count=$((1310720 / 4096))`
+The new size would be 0x140000 or 1310720 bytes in this example, then just dd it out to a flashable file: 
+
+`dd if=param.lfs.big of=param.lfs.new bs=4096 count=$((1310720 / 4096))`
 
 And that should be it.
 
